@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lanort - Sistema de Pedidos</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="cart-floating">
+        <div id="cartBadge" class="cart-badge empty" onclick="openCartModal()">
+            <div class="cart-icon">🛒</div>
+            <div class="cart-count">0</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <img src="https://storage.googleapis.com/lanort.prd.imagefiles.dynamicssales.com.br/ecommerce/logo.png?p=full" alt="Lanort Logo">
+            </div>
+            <div class="page-title"></div>
+        </div>
+
+        <div class="search-container">
+            <div class="search-main">
+                <div class="search-free">
+                    <label for="freeSearch">Pesquisar:</label>
+                    <input type="text" id="freeSearch" placeholder="Digite código, marca, descrição ou código de barras...">
+                </div>
+                
+                <div class="brands-filter">
+                    <label for="brandsSelect">Filtrar por Marca:</label>
+                    <select id="brandsSelect" class="brands-select">
+                        <option value="">Todas as marcas</option>
+                        <option value="loading" disabled>Carregando marcas...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="search-actions">
+                <button type="button" class="btn" onclick="searchProducts()">
+                    🔍 Buscar Produtos
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="clearSearch()">
+                    🗑️ Limpar Tudo
+                </button>
+            </div>
+        </div>
+
+        <div class="results-container">
+            <div class="results-header">
+                <div class="results-count" id="resultsCount">Use os filtros acima para buscar produtos</div>
+            </div>
+
+            <div id="filtersSummary" class="filters-summary" style="display: none;"></div>
+
+            <div id="loading" class="loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Buscando produtos...</p>
+            </div>
+
+            <div id="results" class="products-grid">
+                <div class="empty-state">
+                    <div>📦</div>
+                    <p>Use os filtros acima para buscar produtos</p>
+                    <p style="font-size: 0.9rem; margin-top: 10px; opacity: 0.7;">
+                        Clique em "Buscar Produtos" para começar
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="cartModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: #e65100; margin-bottom: 20px; text-align: center;">🛒 Seu Carrinho</h2>
+            
+            <div id="cartItems" class="cart-items">
+                <div class="empty-state">
+                    <p>Seu carrinho está vazio</p>
+                </div>
+            </div>
+            
+            <div id="cartSummary" class="cart-summary" style="display: none;">
+                <div class="cart-total">
+                    Total: R$ <span id="cartTotal">0,00</span>
+                </div>
+                
+                <div class="client-form">
+                    <h3 style="color: #e65100; margin-bottom: 15px;">Dados do Pedido</h3>
+                    
+                    <div class="form-group required">
+                        <label for="selectedUser">Usuário:</label>
+                        <select id="selectedUser" class="user-select" required>
+                            <option value="">Selecione um usuário</option>
+                        </select>
+                        <div class="field-error" id="userError">Por favor, selecione um usuário</div>
+                    </div>
+
+                    <div class="form-group required">
+                        <label for="selectedPrazo">Prazo de Pagamento:</label>
+                        <select id="selectedPrazo" class="prazo-select" required>
+                            <option value="">Selecione um prazo de pagamento</option>
+                        </select>
+                        <div class="field-error" id="prazoError">Por favor, selecione um prazo de pagamento</div>
+                    </div>
+                    
+                    <div class="form-group required">
+                        <label for="clientEmail">Email:</label>
+                        <input type="email" id="clientEmail" placeholder="exemplo@email.com" 
+                               autocomplete="email" required>
+                        <div class="field-error" id="emailError">Por favor, informe um email válido</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="clientNotes">Observações:</label>
+                        <textarea id="clientNotes" rows="3" placeholder="Observações adicionais sobre o pedido..."></textarea>
+                    </div>
+                </div>
+                
+                <button class="btn btn-success" style="width: 100%; margin-top: 15px;" onclick="validateAndFinalizeOrder()">
+                    ✅ Finalizar Pedido
+                </button>
+            </div>
+            
+            <button class="btn btn-secondary" style="width: 100%; margin-top: 15px;" onclick="closeCartModal()">
+                ↩️ Continuar Comprando
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
