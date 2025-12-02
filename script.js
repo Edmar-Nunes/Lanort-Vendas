@@ -1,4 +1,4 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbyroZxGQCIYE3V3wRcZpaV7JKzjBu_ImGJBr2naVrTZqoQ53H2Mi4RrUdWFFCam-oZD/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyEO7NedMPj0c2sDq6uf_J5W3AOZoDgc9D8pMYdKlMhekBhCcyaEpxErb5rOsvl-Qoe/exec';
 
 const CONFIG = {
     productsPerPage: 10000,
