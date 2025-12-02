@@ -147,7 +147,6 @@ function validateAndFinalizeOrder() {
     }
 }
 
-// ✅ CORRIGIDO: Usa fetch em vez de google.script.run
 async function loadUsers() {
     try {
         const response = await fetch(`${API_URL}?recurso=usuarios`);
@@ -176,7 +175,6 @@ async function loadUsers() {
     }
 }
 
-// ✅ CORRIGIDO: Usa fetch em vez de google.script.run
 async function loadPrazos() {
     try {
         const response = await fetch(`${API_URL}?recurso=prazos`);
@@ -274,7 +272,6 @@ function formatStock(stock) {
     }
 }
 
-// ✅ CORRIGIDO: Usa fetch em vez de google.script.run
 async function loadBrands() {
     try {
         const response = await fetch(`${API_URL}?recurso=produtos`);
@@ -396,6 +393,9 @@ function displayResults(products, searchTerm, selectedBrand) {
         const stock = getProductStock(product);
         const stockDisplay = formatStock(stock);
         
+        // Sanitizar código para evitar problemas com aspas
+        const safeCode = productCode.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        
         html += `
             <div class="product-card">
                 <div class="product-image-container">
@@ -428,18 +428,18 @@ function displayResults(products, searchTerm, selectedBrand) {
                     </div>
                     
                     <div class="quantity-controls">
-                        <button class="quantity-btn" onclick="updateQuantity('${productCode}', -1)">-</button>
-                        <input type="number" id="quantity-${productCode}" class="quantity-input" 
+                        <button class="quantity-btn" onclick="updateQuantity('${safeCode}', -1)">-</button>
+                        <input type="number" id="quantity-${safeCode}" class="quantity-input" 
                                value="${currentQty}" min="0" max="${stock}"
-                               onchange="currentQuantities['${productCode}'] = parseInt(this.value); updateRealTimeTotal('${productCode}')">
-                        <button class="quantity-btn" onclick="updateQuantity('${productCode}', 1)">+</button>
+                               onchange="currentQuantities['${safeCode}'] = parseInt(this.value); updateRealTimeTotal('${safeCode}')">
+                        <button class="quantity-btn" onclick="updateQuantity('${safeCode}', 1)">+</button>
                     </div>
                     
-                    <div class="real-time-total" id="realtime-total-${productCode}">
+                    <div class="real-time-total" id="realtime-total-${safeCode}">
                         ${currentQty > 0 ? `Total: R$ ${formatPrice(totalPrice)}` : 'Selecione a quantidade'}
                     </div>
                     
-                    <button class="add-to-cart" onclick="addToCart('${productCode}', currentQuantities['${productCode}'] || 0)" ${currentQty === 0 || stock === 0 ? 'disabled' : ''}>
+                    <button class="add-to-cart" onclick="addToCart('${safeCode}', currentQuantities['${safeCode}'] || 0)" ${currentQty === 0 || stock === 0 ? 'disabled' : ''}>
                         ${stock === 0 ? '⛔ Sem Estoque' : currentQty === 0 ? '🛒 Selecione a quantidade' : '🛒 Adicionar ao Carrinho'}
                     </button>
                 </div>
@@ -763,7 +763,6 @@ function closeCartModal() {
     resetFinalizeButton();
 }
 
-// ✅ CORRIGIDO: Usa fetch para salvar pedidos
 async function finalizeOrder() {
     const clientEmailValue = dom.clientEmail.value.trim();
     const clientNotesValue = dom.clientNotes.value.trim();
@@ -797,7 +796,7 @@ async function finalizeOrder() {
         const item = cart[index];
         
         const orderData = {
-            recurso: 'pedidos', // IMPORTANTE: Indica que é um pedido
+            recurso: 'pedidos', // 🔥 ESTA É A CHAVE: o parâmetro 'recurso' indica que é um pedido
             email: clientEmailValue,
             observacoes: clientNotesValue,
             codigo: item.codigo,
@@ -812,13 +811,18 @@ async function finalizeOrder() {
         };
         
         try {
-            // ✅ Usa POST para enviar o pedido
+            // 🔥 FORMATO QUE FUNCIONA: URL encoded (não JSON)
+            const params = new URLSearchParams();
+            Object.keys(orderData).forEach(key => {
+                params.append(key, orderData[key]);
+            });
+            
             const response = await fetch(API_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: new URLSearchParams(orderData).toString()
+                body: params.toString()
             });
             
             if (!response.ok) {
