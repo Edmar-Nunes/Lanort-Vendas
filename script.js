@@ -132,7 +132,7 @@ function validateAndFinalizeOrder() {
     const isEmailValid = validateEmailField();
 
     if (isUserValid && isPrazoValid && isEmailValid) {
-        finalizeOrder();
+        finalizeOrderBatch(); // 🔥 AGORA USA MODO LOTE POR PADRÃO
     } else {
         resetFinalizeButton();
         showError('Por favor, preencha todos os campos obrigatórios corretamente');
@@ -386,6 +386,7 @@ function displayResults(products, searchTerm, selectedBrand) {
         const stock = getProductStock(product);
         const stockDisplay = formatStock(stock);
         
+        // Sanitizar código para evitar problemas com aspas
         const safeCode = productCode.toString().replace(/'/g, "\\'").replace(/"/g, '&quot;');
         
         html += `
@@ -755,7 +756,8 @@ function closeCartModal() {
     resetFinalizeButton();
 }
 
-async function finalizeOrder() {
+// 🔥 FUNÇÃO PRINCIPAL MELHORADA: ENVIO EM LOTE
+async function finalizeOrderBatch() {
     const clientEmailValue = dom.clientEmail.value.trim();
     const clientNotesValue = dom.clientNotes.value.trim();
     const selectedUserValue = dom.selectedUser.value;
@@ -767,11 +769,10 @@ async function finalizeOrder() {
         return;
     }
     
-    const finalizeBtn = document.querySelector('.btn-success');
-    finalizeBtn.disabled = true;
-    finalizeBtn.classList.add('btn-loading');
-    finalizeBtn.innerHTML = '⏳ Enviando Pedido em Lote...';
+    // Gera número de pedido único
+    const numeroPedido = generateOrderNumber();
     
+    // Busca informações completas do usuário e prazo
     const selectedUserObj = allUsers.find(u => 
         (u['Cód. Parceiro'] && u['Cód. Parceiro'].toString() === selectedUserValue) ||
         (u.codigo && u.codigo.toString() === selectedUserValue) ||
@@ -783,6 +784,7 @@ async function finalizeOrder() {
         (p.Tipo && p.Tipo.toString() === selectedPrazoValue)
     );
     
+    // Prepara o texto para usuário e prazo
     const usuarioTexto = selectedUserObj ? 
         `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo || selectedUserObj.id} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome || selectedUserObj.Nome}` : 
         selectedUserValue;
@@ -791,31 +793,40 @@ async function finalizeOrder() {
         `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo || selectedPrazoObj.Tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao || selectedPrazoObj.Descricao}` : 
         selectedPrazoValue;
     
+    // 🔥 PREPARA OS ITENS PARA ENVIO EM LOTE
+    const itensPedido = cart.map((item, index) => ({
+        codigo: item.codigo,
+        descricao: item.descricao,
+        marca: item.marca,
+        quantidade: item.quantidade,
+        valorUnitario: item.precoUnitario,
+        valorTotal: item.valorTotal,
+        numeroItem: (index + 1).toString().padStart(2, '0')
+    }));
+    
+    // 🔥 DADOS DO PEDIDO EM LOTE
+    const orderData = {
+        recurso: 'pedidos',
+        modo: 'lote', // 🔥 Indica modo lote
+        email: clientEmailValue,
+        usuario: usuarioTexto,
+        prazo: prazoTexto,
+        observacoes: clientNotesValue,
+        numeroPedido: numeroPedido,
+        itens: JSON.stringify(itensPedido) // 🔥 Itens como JSON string
+    };
+    
+    const finalizeBtn = document.querySelector('.btn-success');
+    finalizeBtn.disabled = true;
+    finalizeBtn.classList.add('btn-loading');
+    finalizeBtn.innerHTML = '⏳ Enviando Pedido em Lote...';
+    
     try {
-        const itensParaEnvio = cart.map(item => ({
-            codigo: item.codigo,
-            descricao: item.descricao,
-            quantidade: item.quantidade,
-            valorUnitario: item.precoUnitario,
-            valorTotal: item.valorTotal
-        }));
-        
-        const dadosPedido = {
-            recurso: 'pedidos',
-            modo: 'lote',
-            email: clientEmailValue,
-            usuario: usuarioTexto,
-            prazo: prazoTexto,
-            observacoes: clientNotesValue,
-            itens: JSON.stringify(itensParaEnvio)
-        };
-        
+        // Envio como form-urlencoded
         const formData = new URLSearchParams();
-        Object.keys(dadosPedido).forEach(key => {
-            formData.append(key, dadosPedido[key]);
+        Object.keys(orderData).forEach(key => {
+            formData.append(key, orderData[key]);
         });
-        
-        const startTime = Date.now();
         
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -825,8 +836,6 @@ async function finalizeOrder() {
             body: formData.toString()
         });
         
-        const tempo = Date.now() - startTime;
-        
         if (!response.ok) {
             throw new Error(`Erro HTTP: ${response.status}`);
         }
@@ -834,17 +843,16 @@ async function finalizeOrder() {
         const result = await response.json();
         
         if (result.sucesso) {
-            const numeroPedidoAPI = result.dados?.numeroPedido || generateOrderNumber();
+            // 🎉 SUCESSO TOTAL!
+            showSuccessButton();
+            showSuccess(`🎉 Pedido ${numeroPedido} salvo com ${cart.length} itens!`);
             
-            showSuccess(`🎉 Pedido ${numeroPedidoAPI} enviado em LOTE! ${cart.length} itens salvos em ${tempo}ms`);
-            
+            // Limpa carrinho
             cart = [];
             saveCartToStorage();
             updateCartUI();
             
-            finalizeBtn.innerHTML = '✅ Pedido Enviado!';
-            finalizeBtn.classList.remove('btn-loading');
-            
+            // Limpa formulário
             setTimeout(() => {
                 closeCartModal();
                 dom.clientEmail.value = '';
@@ -858,18 +866,17 @@ async function finalizeOrder() {
                 dom.selectedUser.classList.remove('error');
                 dom.selectedPrazo.classList.remove('error');
                 dom.clientEmail.classList.remove('error');
-                
-                resetFinalizeButton();
             }, 3000);
             
         } else {
-            const errorMsg = result.erro || 'Erro ao salvar pedido em lote';
-            throw new Error(errorMsg);
+            // ❌ ERRO NA API
+            showError(`❌ Erro ao salvar pedido: ${result.erro || 'Erro desconhecido'}`);
+            resetFinalizeButton();
         }
         
     } catch (error) {
-        console.error('Erro ao enviar pedido em lote:', error);
-        showError(`Erro ao enviar pedido: ${error.message}`);
+        console.error('❌ Erro no envio em lote:', error);
+        showError(`❌ Erro de conexão: ${error.message}`);
         resetFinalizeButton();
     }
 }
