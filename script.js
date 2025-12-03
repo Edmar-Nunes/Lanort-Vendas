@@ -1,4 +1,6 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbyEO7NedMPj0c2sDq6uf_J5W3AOZoDgc9D8pMYdKlMhekBhCcyaEpxErb5rOsvl-Qoe/exec';
+[file name]: script.js
+[file content begin]
+const API_URL = 'https://script.google.com/macros/s/AKfycbx-LWzldarCtr0gLSCwlIsqxc6e9xC0HGnMWerKRTBOELtMFAjcWG_lomjj37ksRWqs/exec';
 
 const CONFIG = {
     productsPerPage: 10000,
@@ -763,22 +765,34 @@ function closeCartModal() {
     resetFinalizeButton();
 }
 
+// 🔥 FUNÇÃO FINALIZEORDER CORRIGIDA - ENVIA UM ÚNICO PEDIDO COM TODOS OS ITENS
 async function finalizeOrder() {
+    const finalizeBtn = document.querySelector('.btn-success');
+    
+    finalizeBtn.disabled = true;
+    finalizeBtn.classList.add('btn-loading');
+    finalizeBtn.innerHTML = '⏳ Enviando Pedido...';
+
     const clientEmailValue = dom.clientEmail.value.trim();
     const clientNotesValue = dom.clientNotes.value.trim();
     const selectedUserValue = dom.selectedUser.value;
     const selectedPrazoValue = dom.selectedPrazo.value;
     
-    if (cart.length === 0) {
-        showError('O carrinho está vazio!');
+    const isUserValid = validateField(dom.selectedUser, dom.userError);
+    const isPrazoValid = validateField(dom.selectedPrazo, dom.prazoError);
+    const isEmailValid = validateEmailField();
+
+    if (!isUserValid || !isPrazoValid || !isEmailValid) {
         resetFinalizeButton();
+        showError('Por favor, preencha todos os campos obrigatórios corretamente');
         return;
     }
-    
-    const numeroPedido = generateOrderNumber();
-    let savedCount = 0;
-    let errorCount = 0;
-    const totalItems = cart.length;
+
+    if (cart.length === 0) {
+        resetFinalizeButton();
+        showError('O carrinho está vazio!');
+        return;
+    }
     
     const selectedUserObj = allUsers.find(u => 
         (u['Cód. Parceiro'] === selectedUserValue) ||
@@ -791,86 +805,98 @@ async function finalizeOrder() {
         (p.Tipo === selectedPrazoValue)
     );
     
-    // Envia cada item do carrinho
-    for (let index = 0; index < cart.length; index++) {
-        const item = cart[index];
-        
-        const orderData = {
-            recurso: 'pedidos', // 🔥 ESTA É A CHAVE: o parâmetro 'recurso' indica que é um pedido
-            email: clientEmailValue,
-            observacoes: clientNotesValue,
-            codigo: item.codigo,
-            descricao: item.descricao,
-            quantidade: item.quantidade,
-            valorUnitario: item.precoUnitario,
-            valorTotal: item.valorTotal,
-            usuario: selectedUserObj ? `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome}` : '',
-            prazo: selectedPrazoObj ? `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao}` : '',
-            numeroPedido: numeroPedido,
-            numeroItem: (index + 1).toString().padStart(2, '0')
-        };
-        
-        try {
-            // 🔥 FORMATO QUE FUNCIONA: URL encoded (não JSON)
-            const params = new URLSearchParams();
-            Object.keys(orderData).forEach(key => {
-                params.append(key, orderData[key]);
-            });
-            
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: params.toString()
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Erro HTTP: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            
-            if (result.erro) {
-                errorCount++;
-                showError(`Erro ao salvar item ${index + 1}: ${result.erro}`);
-            } else {
-                savedCount++;
-            }
-            
-        } catch (error) {
-            errorCount++;
-            console.error(`Erro ao salvar item ${index + 1}:`, error);
-            showError(`Erro ao salvar item ${index + 1}`);
-        }
-    }
+    // 🔥 CORREÇÃO: Preparar um ÚNICO pedido com TODOS os itens
+    const numeroPedido = generateOrderNumber();
     
-    // Verifica se todos os itens foram salvos
-    if (errorCount === 0 && savedCount === totalItems) {
-        showSuccessButton();
-        showSuccess(`Pedido ${numeroPedido} finalizado com ${totalItems} item(ns)!`);
+    // Preparar array de itens do pedido
+    const itensPedido = cart.map(item => ({
+        codigo: item.codigo,
+        descricao: item.descricao,
+        quantidade: item.quantidade,
+        valorUnitario: item.precoUnitario,
+        valorTotal: item.valorTotal
+    }));
+    
+    // Preparar objeto de pedido COMPLETO
+    const pedidoCompleto = {
+        recurso: 'pedidos',
+        numeroPedido: numeroPedido,
+        email: clientEmailValue,
+        observacoes: clientNotesValue,
+        usuario: selectedUserObj ? `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome}` : '',
+        prazo: selectedPrazoObj ? `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao}` : '',
+        status: 'Pendente',
+        itens: itensPedido  // 🔥 ARRAY com TODOS os itens
+    };
+    
+    console.log('📦 Enviando pedido completo para API:', pedidoCompleto);
+    
+    try {
+        // 🔥 ENVIAR UM ÚNICO PEDIDO COM TODOS OS ITENS
+        // Usando FormData para garantir envio correto
+        const formData = new URLSearchParams();
+        formData.append('recurso', 'pedidos');
+        formData.append('numeroPedido', pedidoCompleto.numeroPedido);
+        formData.append('email', pedidoCompleto.email);
+        formData.append('observacoes', pedidoCompleto.observacoes || '');
+        formData.append('usuario', pedidoCompleto.usuario || '');
+        formData.append('prazo', pedidoCompleto.prazo || '');
+        formData.append('status', pedidoCompleto.status);
         
-        // Limpa o carrinho
-        cart = [];
-        saveCartToStorage();
-        updateCartUI();
+        // 🔥 ENVIAR ITENS COMO JSON STRING
+        formData.append('itens', JSON.stringify(pedidoCompleto.itens));
         
-        setTimeout(() => {
-            closeCartModal();
-            dom.clientEmail.value = '';
-            dom.clientNotes.value = '';
-            dom.selectedUser.value = '';
-            dom.selectedPrazo.value = '';
+        console.log('📤 Dados sendo enviados:', Object.fromEntries(formData));
+        
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: formData.toString()
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        console.log('📥 Resposta da API:', result);
+        
+        if (result.erro || result.error) {
+            showError(`Erro ao salvar pedido: ${result.erro || result.error}`);
+            resetFinalizeButton();
+        } else if (result.success === false) {
+            showError(`Erro ao salvar pedido: ${result.error || 'Erro desconhecido'}`);
+            resetFinalizeButton();
+        } else {
+            showSuccessButton();
+            showSuccess(`✅ Pedido ${numeroPedido} finalizado com ${cart.length} item(ns)!`);
             
-            dom.userError.style.display = 'none';
-            dom.prazoError.style.display = 'none';
-            dom.emailError.style.display = 'none';
-            dom.selectedUser.classList.remove('error');
-            dom.selectedPrazo.classList.remove('error');
-            dom.clientEmail.classList.remove('error');
-        }, 2000);
-    } else {
-        showError(`${errorCount} item(s) falharam ao salvar. ${savedCount}/${totalItems} salvos.`);
+            // Limpa o carrinho
+            cart = [];
+            saveCartToStorage();
+            updateCartUI();
+            
+            setTimeout(() => {
+                closeCartModal();
+                dom.clientEmail.value = '';
+                dom.clientNotes.value = '';
+                dom.selectedUser.value = '';
+                dom.selectedPrazo.value = '';
+                
+                dom.userError.style.display = 'none';
+                dom.prazoError.style.display = 'none';
+                dom.emailError.style.display = 'none';
+                dom.selectedUser.classList.remove('error');
+                dom.selectedPrazo.classList.remove('error');
+                dom.clientEmail.classList.remove('error');
+            }, 2000);
+        }
+        
+    } catch (error) {
+        console.error(`❌ Erro ao salvar pedido:`, error);
+        showError(`Erro ao salvar pedido: ${error.message}`);
         resetFinalizeButton();
     }
 }
@@ -957,3 +983,56 @@ function showSuccessButton() {
         }, 3000);
     }
 }
+
+// 🔥 FUNÇÃO PARA TESTAR A API (use no console do navegador)
+function testarAPI() {
+    const dadosTeste = {
+        recurso: 'pedidos',
+        numeroPedido: 'TEST' + Date.now(),
+        email: 'teste@email.com',
+        usuario: 'Cliente Teste',
+        observacoes: 'Pedido de teste do site',
+        prazo: '30 DIAS - À Vista',
+        status: 'Pendente',
+        itens: [
+            {
+                codigo: 'TEST001',
+                descricao: 'Produto Teste 1',
+                quantidade: 2,
+                valorUnitario: 10.50,
+                valorTotal: 21.00
+            },
+            {
+                codigo: 'TEST002',
+                descricao: 'Produto Teste 2',
+                quantidade: 1,
+                valorUnitario: 25.00,
+                valorTotal: 25.00
+            }
+        ]
+    };
+    
+    const formData = new URLSearchParams();
+    Object.keys(dadosTeste).forEach(key => {
+        if (key === 'itens') {
+            formData.append(key, JSON.stringify(dadosTeste[key]));
+        } else {
+            formData.append(key, dadosTeste[key]);
+        }
+    });
+    
+    fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString()
+    })
+    .then(response => response.json())
+    .then(data => console.log('✅ Resposta da API:', data))
+    .catch(error => console.error('❌ Erro:', error));
+}
+
+// Expor função de teste para o console
+window.testarAPI = testarAPI;
+[file content end]
