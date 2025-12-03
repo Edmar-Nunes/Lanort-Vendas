@@ -153,7 +153,6 @@ async function loadUsers() {
         if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
         const data = await response.json();
         
-        // 🔥 NOVO: Suporte para nova estrutura da API
         if (data.sucesso && data.dados) {
             allUsers = data.dados;
         } else if (data.dados && Array.isArray(data.dados)) {
@@ -179,7 +178,6 @@ async function loadPrazos() {
         if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
         const data = await response.json();
         
-        // 🔥 NOVO: Suporte para nova estrutura da API
         if (data.sucesso && data.dados) {
             allPrazos = data.dados;
         } else if (data.dados && Array.isArray(data.dados)) {
@@ -276,7 +274,6 @@ async function loadBrands() {
         if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
         const data = await response.json();
         
-        // 🔥 NOVO: Suporte para nova estrutura da API
         if (data.sucesso && data.dados) {
             allProducts = data.dados;
         } else if (data.dados && Array.isArray(data.dados)) {
@@ -389,7 +386,6 @@ function displayResults(products, searchTerm, selectedBrand) {
         const stock = getProductStock(product);
         const stockDisplay = formatStock(stock);
         
-        // Sanitizar código para evitar problemas com aspas
         const safeCode = productCode.toString().replace(/'/g, "\\'").replace(/"/g, '&quot;');
         
         html += `
@@ -759,7 +755,8 @@ function closeCartModal() {
     resetFinalizeButton();
 }
 
-async function finalizeOrder() {
+// 🔥🔥🔥 NOVA FUNÇÃO: ENVIAR PEDIDOS EM LOTE 🔥🔥🔥
+async function finalizeOrderEmLote() {
     const clientEmailValue = dom.clientEmail.value.trim();
     const clientNotesValue = dom.clientNotes.value.trim();
     const selectedUserValue = dom.selectedUser.value;
@@ -771,7 +768,163 @@ async function finalizeOrder() {
         return;
     }
     
-    // 🔥 NOVO: Gera um número de pedido único para todo o carrinho
+    const finalizeBtn = document.querySelector('.btn-success');
+    finalizeBtn.disabled = true;
+    finalizeBtn.classList.add('btn-loading');
+    finalizeBtn.innerHTML = '⏳ Enviando Pedido em Lote...';
+    
+    // Busca informações completas do usuário e prazo
+    const selectedUserObj = allUsers.find(u => 
+        (u['Cód. Parceiro'] && u['Cód. Parceiro'].toString() === selectedUserValue) ||
+        (u.codigo && u.codigo.toString() === selectedUserValue) ||
+        (u.id && u.id.toString() === selectedUserValue)
+    );
+    const selectedPrazoObj = allPrazos.find(p => 
+        (p['Tipo de Negociação'] && p['Tipo de Negociação'].toString() === selectedPrazoValue) ||
+        (p.tipo && p.tipo.toString() === selectedPrazoValue) ||
+        (p.Tipo && p.Tipo.toString() === selectedPrazoValue)
+    );
+    
+    // Prepara o texto para usuário e prazo
+    const usuarioTexto = selectedUserObj ? 
+        `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo || selectedUserObj.id} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome || selectedUserObj.Nome}` : 
+        selectedUserValue;
+    
+    const prazoTexto = selectedPrazoObj ? 
+        `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo || selectedPrazoObj.Tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao || selectedPrazoObj.Descricao}` : 
+        selectedPrazoValue;
+    
+    try {
+        console.log('🚀 Preparando envio em LOTE com', cart.length, 'itens...');
+        
+        // 🔥 Prepara os itens para envio em lote
+        const itensParaEnvio = cart.map(item => ({
+            codigo: item.codigo,
+            descricao: item.descricao,
+            quantidade: item.quantidade,
+            valorUnitario: item.precoUnitario,
+            valorTotal: item.valorTotal
+        }));
+        
+        // 🔥 Dados para envio em lote
+        const dadosPedido = {
+            recurso: 'pedidos',
+            modo: 'lote', // 🔥 Modo LOTE para envio múltiplo
+            email: clientEmailValue,
+            usuario: usuarioTexto,
+            prazo: prazoTexto,
+            observacoes: clientNotesValue,
+            itens: JSON.stringify(itensParaEnvio) // 🔥 Itens como JSON string
+        };
+        
+        console.log('📦 Dados do pedido em lote:', dadosPedido);
+        
+        // 🔥 Envia em formato form-urlencoded
+        const formData = new URLSearchParams();
+        Object.keys(dadosPedido).forEach(key => {
+            formData.append(key, dadosPedido[key]);
+        });
+        
+        const startTime = Date.now();
+        
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: formData.toString()
+        });
+        
+        const tempo = Date.now() - startTime;
+        
+        if (!response.ok) {
+            throw new Error(`Erro HTTP: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            const numeroPedidoAPI = result.dados?.numeroPedido || generateOrderNumber();
+            
+            // Mostra sucesso
+            showSuccess(`🎉 Pedido ${numeroPedidoAPI} enviado em LOTE! ${cart.length} itens salvos em ${tempo}ms`);
+            console.log(`✅ Pedido em lote salvo: ${numeroPedidoAPI} (${tempo}ms)`);
+            console.log('📊 Resultado:', result);
+            
+            // Limpa o carrinho
+            cart = [];
+            saveCartToStorage();
+            updateCartUI();
+            
+            // Atualiza o botão
+            finalizeBtn.innerHTML = '✅ Pedido Enviado!';
+            finalizeBtn.classList.remove('btn-loading');
+            
+            // Limpa o formulário após 3 segundos
+            setTimeout(() => {
+                closeCartModal();
+                dom.clientEmail.value = '';
+                dom.clientNotes.value = '';
+                dom.selectedUser.value = '';
+                dom.selectedPrazo.value = '';
+                
+                dom.userError.style.display = 'none';
+                dom.prazoError.style.display = 'none';
+                dom.emailError.style.display = 'none';
+                dom.selectedUser.classList.remove('error');
+                dom.selectedPrazo.classList.remove('error');
+                dom.clientEmail.classList.remove('error');
+                
+                resetFinalizeButton();
+            }, 3000);
+            
+        } else {
+            throw new Error(result.erro || 'Erro desconhecido ao salvar pedido em lote');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao enviar pedido em lote:', error);
+        showError(`Erro ao enviar pedido em lote: ${error.message}`);
+        resetFinalizeButton();
+    }
+}
+
+// 🔥 Atualiza a função finalizeOrder para usar o modo lote
+async function finalizeOrder() {
+    // Verifica se pode usar modo lote (API v3.0+)
+    try {
+        const testResponse = await fetch(`${API_URL}?recurso=teste`);
+        const testData = await testResponse.json();
+        
+        // Verifica se a API suporta modo lote (versão 3.0+)
+        const version = parseFloat(testData.versao) || 1.0;
+        
+        if (version >= 3.0) {
+            // Usa modo lote (mais rápido!)
+            return await finalizeOrderEmLote();
+        } else {
+            // Usa modo individual (para compatibilidade)
+            return await finalizeOrderIndividual();
+        }
+    } catch (error) {
+        console.warn('⚠️ Não foi possível detectar versão da API, usando modo lote...');
+        return await finalizeOrderEmLote();
+    }
+}
+
+// 🔥 Função original de finalização individual (mantida para compatibilidade)
+async function finalizeOrderIndividual() {
+    const clientEmailValue = dom.clientEmail.value.trim();
+    const clientNotesValue = dom.clientNotes.value.trim();
+    const selectedUserValue = dom.selectedUser.value;
+    const selectedPrazoValue = dom.selectedPrazo.value;
+    
+    if (cart.length === 0) {
+        showError('O carrinho está vazio!');
+        resetFinalizeButton();
+        return;
+    }
+    
     const numeroPedido = generateOrderNumber();
     let savedCount = 0;
     let errorCount = 0;
@@ -789,7 +942,6 @@ async function finalizeOrder() {
         (p.Tipo && p.Tipo.toString() === selectedPrazoValue)
     );
     
-    // 🔥 NOVO: Prepara o texto para usuário e prazo
     const usuarioTexto = selectedUserObj ? 
         `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo || selectedUserObj.id} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome || selectedUserObj.Nome}` : 
         selectedUserValue;
@@ -798,11 +950,9 @@ async function finalizeOrder() {
         `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo || selectedPrazoObj.Tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao || selectedPrazoObj.Descricao}` : 
         selectedPrazoValue;
     
-    // Envia cada item do carrinho
     for (let index = 0; index < cart.length; index++) {
         const item = cart[index];
         
-        // 🔥 NOVO: Dados formatados para a nova API
         const orderData = {
             recurso: 'pedidos',
             email: clientEmailValue,
@@ -819,7 +969,6 @@ async function finalizeOrder() {
         };
         
         try {
-            // 🔥 NOVO: Envio com form-urlencoded
             const formData = new URLSearchParams();
             Object.keys(orderData).forEach(key => {
                 formData.append(key, orderData[key]);
@@ -853,23 +1002,19 @@ async function finalizeOrder() {
             showError(`Erro ao salvar item ${index + 1}: ${error.message}`);
         }
         
-        // Pequena pausa para não sobrecarregar a API
         if (index < cart.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 200));
         }
     }
     
-    // Verifica se todos os itens foram salvos
     if (errorCount === 0 && savedCount === totalItems) {
         showSuccessButton();
         showSuccess(`🎉 Pedido ${numeroPedido} finalizado com ${totalItems} item(ns)! Os dados foram salvos na planilha.`);
         
-        // Limpa o carrinho
         cart = [];
         saveCartToStorage();
         updateCartUI();
         
-        // Limpa o formulário
         setTimeout(() => {
             closeCartModal();
             dom.clientEmail.value = '';
@@ -886,17 +1031,14 @@ async function finalizeOrder() {
         }, 3000);
         
     } else if (savedCount > 0) {
-        // Salvo parcialmente
         showSuccess(`⚠️ Pedido ${numeroPedido} parcialmente salvo: ${savedCount}/${totalItems} itens salvos. ${errorCount} falharam.`);
         resetFinalizeButton();
         
-        // Limpa apenas os itens salvos com sucesso
         cart = cart.filter((_, index) => index >= savedCount);
         saveCartToStorage();
         updateCartUI();
         
     } else {
-        // Nada foi salvo
         showError(`❌ Pedido não salvo! ${errorCount} itens falharam. Verifique a conexão e tente novamente.`);
         resetFinalizeButton();
     }
@@ -985,7 +1127,7 @@ function showSuccessButton() {
     }
 }
 
-// 🔥 NOVO: Função para testar a API
+// 🔥 Função para testar a API
 async function testarAPI() {
     console.log('🧪 Testando conexão com API...');
     try {
@@ -996,6 +1138,67 @@ async function testarAPI() {
     } catch (error) {
         console.error('❌ Erro teste API:', error);
         return false;
+    }
+}
+
+// 🔥 Função para testar o envio em lote (debug)
+async function testarEnvioLote() {
+    console.log('🧪 Testando envio em lote...');
+    
+    // Cria um carrinho de teste
+    const testeCart = [
+        {
+            codigo: "TESTE001",
+            descricao: "Produto Teste 1",
+            quantidade: 2,
+            precoUnitario: 10.50,
+            valorTotal: 21.00
+        },
+        {
+            codigo: "TESTE002",
+            descricao: "Produto Teste 2",
+            quantidade: 3,
+            precoUnitario: 5.75,
+            valorTotal: 17.25
+        }
+    ];
+    
+    const dadosTeste = {
+        recurso: 'pedidos',
+        modo: 'lote',
+        email: 'teste@lanort.com',
+        usuario: '001 - Teste Lote',
+        prazo: 'À VISTA',
+        observacoes: 'Teste de envio em lote',
+        itens: JSON.stringify(testeCart)
+    };
+    
+    try {
+        const formData = new URLSearchParams();
+        Object.keys(dadosTeste).forEach(key => {
+            formData.append(key, dadosTeste[key]);
+        });
+        
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: formData.toString()
+        });
+        
+        const result = await response.json();
+        console.log('📊 Resultado teste lote:', result);
+        
+        if (result.sucesso) {
+            showSuccess('✅ Teste de lote funcionando!');
+        } else {
+            showError(`❌ Teste lote falhou: ${result.erro}`);
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro no teste lote:', error);
+        showError(`Erro no teste lote: ${error.message}`);
     }
 }
 
