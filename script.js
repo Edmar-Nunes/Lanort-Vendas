@@ -132,7 +132,7 @@ function validateAndFinalizeOrder() {
     const isEmailValid = validateEmailField();
 
     if (isUserValid && isPrazoValid && isEmailValid) {
-        finalizeOrderBatch(); // 🔥 AGORA USA MODO LOTE POR PADRÃO
+        finalizeOrderBatch();
     } else {
         resetFinalizeButton();
         showError('Por favor, preencha todos os campos obrigatórios corretamente');
@@ -386,7 +386,6 @@ function displayResults(products, searchTerm, selectedBrand) {
         const stock = getProductStock(product);
         const stockDisplay = formatStock(stock);
         
-        // Sanitizar código para evitar problemas com aspas
         const safeCode = productCode.toString().replace(/'/g, "\\'").replace(/"/g, '&quot;');
         
         html += `
@@ -756,7 +755,7 @@ function closeCartModal() {
     resetFinalizeButton();
 }
 
-// 🔥 FUNÇÃO PRINCIPAL MELHORADA: ENVIO EM LOTE
+// 🔥 FUNÇÃO PRINCIPAL OTIMIZADA PARA SUA API
 async function finalizeOrderBatch() {
     const clientEmailValue = dom.clientEmail.value.trim();
     const clientNotesValue = dom.clientNotes.value.trim();
@@ -768,9 +767,6 @@ async function finalizeOrderBatch() {
         resetFinalizeButton();
         return;
     }
-    
-    // Gera número de pedido único
-    const numeroPedido = generateOrderNumber();
     
     // Busca informações completas do usuário e prazo
     const selectedUserObj = allUsers.find(u => 
@@ -793,27 +789,27 @@ async function finalizeOrderBatch() {
         `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo || selectedPrazoObj.Tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao || selectedPrazoObj.Descricao}` : 
         selectedPrazoValue;
     
-    // 🔥 PREPARA OS ITENS PARA ENVIO EM LOTE
-    const itensPedido = cart.map((item, index) => ({
+    // 🔥 PREPARA OS ITENS NO FORMATO QUE SUA API ESPERA
+    const itensPedido = cart.map(item => ({
         codigo: item.codigo,
         descricao: item.descricao,
-        marca: item.marca,
         quantidade: item.quantidade,
         valorUnitario: item.precoUnitario,
-        valorTotal: item.valorTotal,
-        numeroItem: (index + 1).toString().padStart(2, '0')
+        valorTotal: item.valorTotal
+        // 🔥 NÃO incluir numeroItem - sua API gera automaticamente
+        // 🔥 NÃO incluir marca - mantenha apenas campos necessários
     }));
     
-    // 🔥 DADOS DO PEDIDO EM LOTE
+    // 🔥 DADOS DO PEDIDO EM LOTE (formato compatível com sua API)
     const orderData = {
         recurso: 'pedidos',
-        modo: 'lote', // 🔥 Indica modo lote
+        modo: 'lote', // 🔥 ESSENCIAL: indica modo lote para sua API
         email: clientEmailValue,
         usuario: usuarioTexto,
         prazo: prazoTexto,
         observacoes: clientNotesValue,
-        numeroPedido: numeroPedido,
-        itens: JSON.stringify(itensPedido) // 🔥 Itens como JSON string
+        // 🔥 NÃO enviar numeroPedido - sua API gera automaticamente
+        itens: JSON.stringify(itensPedido) // 🔥 JSON string como sua API espera
     };
     
     const finalizeBtn = document.querySelector('.btn-success');
@@ -822,10 +818,17 @@ async function finalizeOrderBatch() {
     finalizeBtn.innerHTML = '⏳ Enviando Pedido em Lote...';
     
     try {
-        // Envio como form-urlencoded
+        // Envio como form-urlencoded (formato que sua API processa)
         const formData = new URLSearchParams();
         Object.keys(orderData).forEach(key => {
             formData.append(key, orderData[key]);
+        });
+        
+        console.log('📤 Enviando para API:', {
+            url: API_URL,
+            modo: 'lote',
+            itens: itensPedido.length,
+            usuario: usuarioTexto.substring(0, 20) + '...'
         });
         
         const response = await fetch(API_URL, {
@@ -837,7 +840,7 @@ async function finalizeOrderBatch() {
         });
         
         if (!response.ok) {
-            throw new Error(`Erro HTTP: ${response.status}`);
+            throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
         }
         
         const result = await response.json();
@@ -845,7 +848,9 @@ async function finalizeOrderBatch() {
         if (result.sucesso) {
             // 🎉 SUCESSO TOTAL!
             showSuccessButton();
-            showSuccess(`🎉 Pedido ${numeroPedido} salvo com ${cart.length} itens!`);
+            showSuccess(`🎉 Pedido ${result.dados?.numeroPedido || 'salvo'} com ${cart.length} itens!`);
+            
+            console.log('✅ Pedido salvo com sucesso:', result);
             
             // Limpa carrinho
             cart = [];
@@ -872,6 +877,7 @@ async function finalizeOrderBatch() {
             // ❌ ERRO NA API
             showError(`❌ Erro ao salvar pedido: ${result.erro || 'Erro desconhecido'}`);
             resetFinalizeButton();
+            console.error('❌ Erro da API:', result);
         }
         
     } catch (error) {
@@ -963,3 +969,25 @@ function showSuccessButton() {
         }, 3000);
     }
 }
+
+// 🔥 FUNÇÃO DE TESTE DA API (opcional - para debug)
+async function testarAPILote() {
+    console.log('🧪 Testando conexão com API...');
+    try {
+        const response = await fetch(`${API_URL}?recurso=teste`);
+        const data = await response.json();
+        console.log('✅ Teste API:', data);
+        return data.sucesso;
+    } catch (error) {
+        console.error('❌ Erro teste API:', error);
+        return false;
+    }
+}
+
+// Teste automático ao carregar
+window.addEventListener('load', async () => {
+    console.log('🚀 Sistema Lanort carregado');
+    console.log(`📦 Produtos carregados: ${allProducts.length}`);
+    console.log(`👥 Usuários carregados: ${allUsers.length}`);
+    console.log(`📅 Prazos carregados: ${allPrazos.length}`);
+});
