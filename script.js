@@ -1,4 +1,4 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbxacq6JxQaS6xdM69hLpLe74O52MGTg2-nc48i6JYhTE2RiCGghOtpa6Kt2cLSbQTo/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzT6q8jgICOy8xvtzxLUDxqv2NvzvR9Y-UaNvEoPrLZAydg50RewFWo62zDs9nZCLqk/exec';
 
 const CONFIG = {
     productsPerPage: 10000,
@@ -153,21 +153,19 @@ async function loadUsers() {
         if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
         const data = await response.json();
         
-        if (data.erro) {
-            throw new Error(data.erro);
-        }
-        
-        if (data.dados && Array.isArray(data.dados)) {
+        // 🔥 NOVO: Suporte para nova estrutura da API
+        if (data.sucesso && data.dados) {
             allUsers = data.dados;
-            renderUserSelect();
-            usersLoaded = true;
+        } else if (data.dados && Array.isArray(data.dados)) {
+            allUsers = data.dados;
         } else if (Array.isArray(data)) {
             allUsers = data;
-            renderUserSelect();
-            usersLoaded = true;
         } else {
             throw new Error('Formato de resposta inesperado');
         }
+        
+        renderUserSelect();
+        usersLoaded = true;
         
     } catch (error) {
         console.error('Erro ao carregar usuários:', error);
@@ -181,21 +179,19 @@ async function loadPrazos() {
         if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
         const data = await response.json();
         
-        if (data.erro) {
-            throw new Error(data.erro);
-        }
-        
-        if (data.dados && Array.isArray(data.dados)) {
+        // 🔥 NOVO: Suporte para nova estrutura da API
+        if (data.sucesso && data.dados) {
             allPrazos = data.dados;
-            renderPrazoSelect();
-            prazosLoaded = true;
+        } else if (data.dados && Array.isArray(data.dados)) {
+            allPrazos = data.dados;
         } else if (Array.isArray(data)) {
             allPrazos = data;
-            renderPrazoSelect();
-            prazosLoaded = true;
         } else {
             throw new Error('Formato de resposta inesperado');
         }
+        
+        renderPrazoSelect();
+        prazosLoaded = true;
         
     } catch (error) {
         console.error('Erro ao carregar prazos:', error);
@@ -206,10 +202,11 @@ async function loadPrazos() {
 function renderUserSelect() {
     let html = '<option value="">Selecione um usuário</option>';
     allUsers.forEach(user => {
-        const codigo = user['Cód. Parceiro'] || user.codigo || user.id || '';
+        const codigo = user['Cód. Parceiro'] || user.codigo || user.id || user.Codigo || '';
         const nome = user['Nome Parceiro'] || user.nome || user.Nome || '';
         const displayText = `${codigo} - ${nome}`;
-        html += `<option value="${codigo}">${displayText}</option>`;
+        const value = user['Cód. Parceiro'] || user.codigo || user.id || user.Codigo || codigo;
+        html += `<option value="${value}">${displayText}</option>`;
     });
     dom.selectedUser.innerHTML = html;
 }
@@ -220,7 +217,8 @@ function renderPrazoSelect() {
         const tipo = prazo['Tipo de Negociação'] || prazo.tipo || prazo.Tipo || '';
         const descricao = prazo['Descrição'] || prazo.descricao || prazo.Descricao || '';
         const displayText = `${tipo} - ${descricao}`;
-        html += `<option value="${tipo}">${displayText}</option>`;
+        const value = tipo;
+        html += `<option value="${value}">${displayText}</option>`;
     });
     dom.selectedPrazo.innerHTML = html;
 }
@@ -278,21 +276,19 @@ async function loadBrands() {
         if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
         const data = await response.json();
         
-        if (data.erro) {
-            throw new Error(data.erro);
-        }
-        
-        if (data.dados && Array.isArray(data.dados)) {
+        // 🔥 NOVO: Suporte para nova estrutura da API
+        if (data.sucesso && data.dados) {
             allProducts = data.dados;
-            extractBrands(allProducts);
-            brandsLoaded = true;
+        } else if (data.dados && Array.isArray(data.dados)) {
+            allProducts = data.dados;
         } else if (Array.isArray(data)) {
             allProducts = data;
-            extractBrands(allProducts);
-            brandsLoaded = true;
         } else {
             throw new Error('Formato de resposta inesperado');
         }
+        
+        extractBrands(allProducts);
+        brandsLoaded = true;
         
     } catch (error) {
         console.error('Erro ao carregar produtos:', error);
@@ -394,7 +390,7 @@ function displayResults(products, searchTerm, selectedBrand) {
         const stockDisplay = formatStock(stock);
         
         // Sanitizar código para evitar problemas com aspas
-        const safeCode = productCode.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const safeCode = productCode.toString().replace(/'/g, "\\'").replace(/"/g, '&quot;');
         
         html += `
             <div class="product-card">
@@ -480,9 +476,9 @@ function updateFiltersSummary(searchTerm, selectedBrand) {
 
 function updateRealTimeTotal(productCode) {
     const product = allProducts.find(p => 
-        (p.Código === productCode) || 
-        (p.codigo === productCode) || 
-        (p.id === productCode)
+        (p.Código && p.Código.toString() === productCode) || 
+        (p.codigo && p.codigo.toString() === productCode) || 
+        (p.id && p.id.toString() === productCode)
     );
     const currentQty = currentQuantities[productCode] || 0;
     
@@ -516,9 +512,9 @@ function updateQuantity(productCode, change) {
     if (!currentQuantities[productCode]) currentQuantities[productCode] = 0;
     
     const product = allProducts.find(p => 
-        (p.Código === productCode) || 
-        (p.codigo === productCode) || 
-        (p.id === productCode)
+        (p.Código && p.Código.toString() === productCode) || 
+        (p.codigo && p.codigo.toString() === productCode) || 
+        (p.id && p.id.toString() === productCode)
     );
     const stock = product ? getProductStock(product) : 999;
     
@@ -551,9 +547,9 @@ function addToCart(productCode, quantity) {
     }
 
     const product = allProducts.find(p => 
-        (p.Código === productCode) || 
-        (p.codigo === productCode) || 
-        (p.id === productCode)
+        (p.Código && p.Código.toString() === productCode) || 
+        (p.codigo && p.codigo.toString() === productCode) || 
+        (p.id && p.id.toString() === productCode)
     );
     
     if (!product) {
@@ -615,9 +611,9 @@ function addToCart(productCode, quantity) {
 function updateItemQuantity(index, change) {
     const item = cart[index];
     const product = allProducts.find(p => 
-        (p.Código === item.codigo) || 
-        (p.codigo === item.codigo) || 
-        (p.id === item.codigo)
+        (p.Código && p.Código.toString() === item.codigo) || 
+        (p.codigo && p.codigo.toString() === item.codigo) || 
+        (p.id && p.id.toString() === item.codigo)
     );
     
     if (!product) return;
@@ -648,9 +644,9 @@ function updateCartItemQuantity(index, newQuantity) {
     
     const item = cart[index];
     const product = allProducts.find(p => 
-        (p.Código === item.codigo) || 
-        (p.codigo === item.codigo) || 
-        (p.id === item.codigo)
+        (p.Código && p.Código.toString() === item.codigo) || 
+        (p.codigo && p.codigo.toString() === item.codigo) || 
+        (p.id && p.id.toString() === item.codigo)
     );
     
     if (!product) return;
@@ -775,28 +771,40 @@ async function finalizeOrder() {
         return;
     }
     
+    // 🔥 NOVO: Gera um número de pedido único para todo o carrinho
     const numeroPedido = generateOrderNumber();
     let savedCount = 0;
     let errorCount = 0;
     const totalItems = cart.length;
     
+    // Busca informações completas do usuário e prazo
     const selectedUserObj = allUsers.find(u => 
-        (u['Cód. Parceiro'] === selectedUserValue) ||
-        (u.codigo === selectedUserValue) ||
-        (u.id === selectedUserValue)
+        (u['Cód. Parceiro'] && u['Cód. Parceiro'].toString() === selectedUserValue) ||
+        (u.codigo && u.codigo.toString() === selectedUserValue) ||
+        (u.id && u.id.toString() === selectedUserValue)
     );
     const selectedPrazoObj = allPrazos.find(p => 
-        (p['Tipo de Negociação'] === selectedPrazoValue) ||
-        (p.tipo === selectedPrazoValue) ||
-        (p.Tipo === selectedPrazoValue)
+        (p['Tipo de Negociação'] && p['Tipo de Negociação'].toString() === selectedPrazoValue) ||
+        (p.tipo && p.tipo.toString() === selectedPrazoValue) ||
+        (p.Tipo && p.Tipo.toString() === selectedPrazoValue)
     );
+    
+    // 🔥 NOVO: Prepara o texto para usuário e prazo
+    const usuarioTexto = selectedUserObj ? 
+        `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo || selectedUserObj.id} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome || selectedUserObj.Nome}` : 
+        selectedUserValue;
+    
+    const prazoTexto = selectedPrazoObj ? 
+        `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo || selectedPrazoObj.Tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao || selectedPrazoObj.Descricao}` : 
+        selectedPrazoValue;
     
     // Envia cada item do carrinho
     for (let index = 0; index < cart.length; index++) {
         const item = cart[index];
         
+        // 🔥 NOVO: Dados formatados para a nova API
         const orderData = {
-            recurso: 'pedidos', // 🔥 ESTA É A CHAVE: o parâmetro 'recurso' indica que é um pedido
+            recurso: 'pedidos',
             email: clientEmailValue,
             observacoes: clientNotesValue,
             codigo: item.codigo,
@@ -804,17 +812,17 @@ async function finalizeOrder() {
             quantidade: item.quantidade,
             valorUnitario: item.precoUnitario,
             valorTotal: item.valorTotal,
-            usuario: selectedUserObj ? `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome}` : '',
-            prazo: selectedPrazoObj ? `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao}` : '',
+            usuario: usuarioTexto,
+            prazo: prazoTexto,
             numeroPedido: numeroPedido,
             numeroItem: (index + 1).toString().padStart(2, '0')
         };
         
         try {
-            // 🔥 FORMATO QUE FUNCIONA: URL encoded (não JSON)
-            const params = new URLSearchParams();
+            // 🔥 NOVO: Envio com form-urlencoded
+            const formData = new URLSearchParams();
             Object.keys(orderData).forEach(key => {
-                params.append(key, orderData[key]);
+                formData.append(key, orderData[key]);
             });
             
             const response = await fetch(API_URL, {
@@ -822,7 +830,7 @@ async function finalizeOrder() {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: params.toString()
+                body: formData.toString()
             });
             
             if (!response.ok) {
@@ -831,30 +839,37 @@ async function finalizeOrder() {
             
             const result = await response.json();
             
-            if (result.erro) {
+            if (!result.sucesso) {
                 errorCount++;
-                showError(`Erro ao salvar item ${index + 1}: ${result.erro}`);
+                showError(`Erro ao salvar item ${index + 1}: ${result.erro || 'Erro desconhecido'}`);
             } else {
                 savedCount++;
+                console.log(`✅ Item ${index + 1} salvo: Pedido ${result.dados?.numeroPedido || 'N/A'}`);
             }
             
         } catch (error) {
             errorCount++;
-            console.error(`Erro ao salvar item ${index + 1}:`, error);
-            showError(`Erro ao salvar item ${index + 1}`);
+            console.error(`❌ Erro ao salvar item ${index + 1}:`, error);
+            showError(`Erro ao salvar item ${index + 1}: ${error.message}`);
+        }
+        
+        // Pequena pausa para não sobrecarregar a API
+        if (index < cart.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 200));
         }
     }
     
     // Verifica se todos os itens foram salvos
     if (errorCount === 0 && savedCount === totalItems) {
         showSuccessButton();
-        showSuccess(`Pedido ${numeroPedido} finalizado com ${totalItems} item(ns)!`);
+        showSuccess(`🎉 Pedido ${numeroPedido} finalizado com ${totalItems} item(ns)! Os dados foram salvos na planilha.`);
         
         // Limpa o carrinho
         cart = [];
         saveCartToStorage();
         updateCartUI();
         
+        // Limpa o formulário
         setTimeout(() => {
             closeCartModal();
             dom.clientEmail.value = '';
@@ -868,9 +883,21 @@ async function finalizeOrder() {
             dom.selectedUser.classList.remove('error');
             dom.selectedPrazo.classList.remove('error');
             dom.clientEmail.classList.remove('error');
-        }, 2000);
+        }, 3000);
+        
+    } else if (savedCount > 0) {
+        // Salvo parcialmente
+        showSuccess(`⚠️ Pedido ${numeroPedido} parcialmente salvo: ${savedCount}/${totalItems} itens salvos. ${errorCount} falharam.`);
+        resetFinalizeButton();
+        
+        // Limpa apenas os itens salvos com sucesso
+        cart = cart.filter((_, index) => index >= savedCount);
+        saveCartToStorage();
+        updateCartUI();
+        
     } else {
-        showError(`${errorCount} item(s) falharam ao salvar. ${savedCount}/${totalItems} salvos.`);
+        // Nada foi salvo
+        showError(`❌ Pedido não salvo! ${errorCount} itens falharam. Verifique a conexão e tente novamente.`);
         resetFinalizeButton();
     }
 }
@@ -920,7 +947,7 @@ function showSuccess(message) {
     successDiv.className = 'success-message';
     successDiv.innerHTML = `<strong>Sucesso:</strong> ${message}`;
     document.querySelector('.container').insertBefore(successDiv, document.querySelector('.search-container'));
-    setTimeout(() => successDiv.remove(), 3000);
+    setTimeout(() => successDiv.remove(), 5000);
 }
 
 function clearSearch() {
@@ -957,3 +984,27 @@ function showSuccessButton() {
         }, 3000);
     }
 }
+
+// 🔥 NOVO: Função para testar a API
+async function testarAPI() {
+    console.log('🧪 Testando conexão com API...');
+    try {
+        const response = await fetch(`${API_URL}?recurso=teste`);
+        const data = await response.json();
+        console.log('✅ Teste API:', data);
+        return data.sucesso;
+    } catch (error) {
+        console.error('❌ Erro teste API:', error);
+        return false;
+    }
+}
+
+// Teste inicial automático
+window.addEventListener('load', async () => {
+    const conectado = await testarAPI();
+    if (conectado) {
+        console.log('✅ Sistema Lanort conectado com sucesso!');
+    } else {
+        console.warn('⚠️ Verifique a conexão com a API');
+    }
+});
