@@ -1,5 +1,3 @@
-[file name]: script.js
-[file content begin]
 const API_URL = 'https://script.google.com/macros/s/AKfycbx-LWzldarCtr0gLSCwlIsqxc6e9xC0HGnMWerKRTBOELtMFAjcWG_lomjj37ksRWqs/exec';
 
 const CONFIG = {
@@ -60,7 +58,7 @@ function loadLastOrderNumber() {
 function generateOrderNumber() {
     lastOrderNumber++;
     localStorage.setItem('lanort_last_order_number', lastOrderNumber.toString());
-    return String(lastOrderNumber).padStart(4, '0');
+    return `PED${String(lastOrderNumber).padStart(4, '0')}`;
 }
 
 function setupEventListeners() {
@@ -765,115 +763,89 @@ function closeCartModal() {
     resetFinalizeButton();
 }
 
-// 🔥 FUNÇÃO FINALIZEORDER CORRIGIDA - ENVIA UM ÚNICO PEDIDO COM TODOS OS ITENS
 async function finalizeOrder() {
-    const finalizeBtn = document.querySelector('.btn-success');
-    
-    finalizeBtn.disabled = true;
-    finalizeBtn.classList.add('btn-loading');
-    finalizeBtn.innerHTML = '⏳ Enviando Pedido...';
-
     const clientEmailValue = dom.clientEmail.value.trim();
     const clientNotesValue = dom.clientNotes.value.trim();
     const selectedUserValue = dom.selectedUser.value;
     const selectedPrazoValue = dom.selectedPrazo.value;
     
-    const isUserValid = validateField(dom.selectedUser, dom.userError);
-    const isPrazoValid = validateField(dom.selectedPrazo, dom.prazoError);
-    const isEmailValid = validateEmailField();
-
-    if (!isUserValid || !isPrazoValid || !isEmailValid) {
-        resetFinalizeButton();
-        showError('Por favor, preencha todos os campos obrigatórios corretamente');
-        return;
-    }
-
     if (cart.length === 0) {
-        resetFinalizeButton();
         showError('O carrinho está vazio!');
+        resetFinalizeButton();
         return;
     }
     
+    const numeroPedido = generateOrderNumber();
+    
+    // Buscar informações completas do usuário e prazo
     const selectedUserObj = allUsers.find(u => 
         (u['Cód. Parceiro'] === selectedUserValue) ||
         (u.codigo === selectedUserValue) ||
         (u.id === selectedUserValue)
     );
+    
     const selectedPrazoObj = allPrazos.find(p => 
         (p['Tipo de Negociação'] === selectedPrazoValue) ||
         (p.tipo === selectedPrazoValue) ||
         (p.Tipo === selectedPrazoValue)
     );
     
-    // 🔥 CORREÇÃO: Preparar um ÚNICO pedido com TODOS os itens
-    const numeroPedido = generateOrderNumber();
-    
-    // Preparar array de itens do pedido
-    const itensPedido = cart.map(item => ({
-        codigo: item.codigo,
-        descricao: item.descricao,
-        quantidade: item.quantidade,
-        valorUnitario: item.precoUnitario,
-        valorTotal: item.valorTotal
-    }));
-    
-    // Preparar objeto de pedido COMPLETO
-    const pedidoCompleto = {
-        recurso: 'pedidos',
+    // Preparar dados do pedido em lote
+    const orderData = {
         numeroPedido: numeroPedido,
         email: clientEmailValue,
+        usuario: selectedUserObj ? 
+            `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome}` : 
+            selectedUserValue,
         observacoes: clientNotesValue,
-        usuario: selectedUserObj ? `${selectedUserObj['Cód. Parceiro'] || selectedUserObj.codigo} - ${selectedUserObj['Nome Parceiro'] || selectedUserObj.nome}` : '',
-        prazo: selectedPrazoObj ? `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao}` : '',
-        status: 'Pendente',
-        itens: itensPedido  // 🔥 ARRAY com TODOS os itens
+        prazo: selectedPrazoObj ? 
+            `${selectedPrazoObj['Tipo de Negociação'] || selectedPrazoObj.tipo} - ${selectedPrazoObj['Descrição'] || selectedPrazoObj.descricao}` : 
+            selectedPrazoValue,
+        status: "Pendente",
+        itens: cart.map((item, index) => ({
+            codigo: item.codigo,
+            descricao: item.descricao,
+            quantidade: item.quantidade,
+            valorUnitario: item.precoUnitario,
+            valorTotal: item.valorTotal
+        }))
     };
     
-    console.log('📦 Enviando pedido completo para API:', pedidoCompleto);
-    
     try {
-        // 🔥 ENVIAR UM ÚNICO PEDIDO COM TODOS OS ITENS
-        // Usando FormData para garantir envio correto
-        const formData = new URLSearchParams();
-        formData.append('recurso', 'pedidos');
-        formData.append('numeroPedido', pedidoCompleto.numeroPedido);
-        formData.append('email', pedidoCompleto.email);
-        formData.append('observacoes', pedidoCompleto.observacoes || '');
-        formData.append('usuario', pedidoCompleto.usuario || '');
-        formData.append('prazo', pedidoCompleto.prazo || '');
-        formData.append('status', pedidoCompleto.status);
-        
-        // 🔥 ENVIAR ITENS COMO JSON STRING
-        formData.append('itens', JSON.stringify(pedidoCompleto.itens));
-        
-        console.log('📤 Dados sendo enviados:', Object.fromEntries(formData));
-        
-        const response = await fetch(API_URL, {
+        // 🔥 AGORA ENVIA EM UM ÚNICO REQUEST EM LOTE
+        const response = await fetch(`${API_URL}?recurso=pedidos`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'application/json',
             },
-            body: formData.toString()
+            body: JSON.stringify(orderData)
         });
         
         if (!response.ok) {
-            throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
+            throw new Error(`Erro HTTP: ${response.status}`);
         }
         
         const result = await response.json();
-        console.log('📥 Resposta da API:', result);
         
-        if (result.erro || result.error) {
-            showError(`Erro ao salvar pedido: ${result.erro || result.error}`);
-            resetFinalizeButton();
-        } else if (result.success === false) {
-            showError(`Erro ao salvar pedido: ${result.error || 'Erro desconhecido'}`);
+        if (result.erro || !result.success) {
+            showError(`Erro ao finalizar pedido: ${result.erro || result.error || 'Erro desconhecido'}`);
             resetFinalizeButton();
         } else {
+            // Sucesso - mostrar confirmação
             showSuccessButton();
-            showSuccess(`✅ Pedido ${numeroPedido} finalizado com ${cart.length} item(ns)!`);
             
-            // Limpa o carrinho
+            // Mostrar informações do pedido salvo
+            showSuccess(`Pedido ${numeroPedido} finalizado com sucesso! ${cart.length} item(ns) salvo(s).`);
+            
+            // Log detalhado
+            console.log('Pedido enviado em lote:', {
+                numeroPedido: numeroPedido,
+                totalItens: cart.length,
+                valorTotal: orderData.itens.reduce((sum, item) => sum + (parseFloat(item.valorTotal) || 0), 0),
+                resposta: result
+            });
+            
+            // Limpar carrinho e campos
             cart = [];
             saveCartToStorage();
             updateCartUI();
@@ -895,8 +867,8 @@ async function finalizeOrder() {
         }
         
     } catch (error) {
-        console.error(`❌ Erro ao salvar pedido:`, error);
-        showError(`Erro ao salvar pedido: ${error.message}`);
+        console.error('Erro ao finalizar pedido:', error);
+        showError(`Erro ao finalizar pedido: ${error.message}`);
         resetFinalizeButton();
     }
 }
@@ -983,56 +955,3 @@ function showSuccessButton() {
         }, 3000);
     }
 }
-
-// 🔥 FUNÇÃO PARA TESTAR A API (use no console do navegador)
-function testarAPI() {
-    const dadosTeste = {
-        recurso: 'pedidos',
-        numeroPedido: 'TEST' + Date.now(),
-        email: 'teste@email.com',
-        usuario: 'Cliente Teste',
-        observacoes: 'Pedido de teste do site',
-        prazo: '30 DIAS - À Vista',
-        status: 'Pendente',
-        itens: [
-            {
-                codigo: 'TEST001',
-                descricao: 'Produto Teste 1',
-                quantidade: 2,
-                valorUnitario: 10.50,
-                valorTotal: 21.00
-            },
-            {
-                codigo: 'TEST002',
-                descricao: 'Produto Teste 2',
-                quantidade: 1,
-                valorUnitario: 25.00,
-                valorTotal: 25.00
-            }
-        ]
-    };
-    
-    const formData = new URLSearchParams();
-    Object.keys(dadosTeste).forEach(key => {
-        if (key === 'itens') {
-            formData.append(key, JSON.stringify(dadosTeste[key]));
-        } else {
-            formData.append(key, dadosTeste[key]);
-        }
-    });
-    
-    fetch(API_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString()
-    })
-    .then(response => response.json())
-    .then(data => console.log('✅ Resposta da API:', data))
-    .catch(error => console.error('❌ Erro:', error));
-}
-
-// Expor função de teste para o console
-window.testarAPI = testarAPI;
-[file content end]
